@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="kk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Jas Abay мектебі — 3D демо</title>
+<style>
+  :root { --navy:#13254f; --blue:#1746b5; --gold:#f0a01e; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #bfe0f7; font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
+  #game canvas { display: block; }
+  .panel { position: fixed; background: rgba(19,37,79,0.82); color: #fff; border-radius: 14px; backdrop-filter: blur(6px); }
+  #hud-left { top: 14px; left: 14px; padding: 12px 16px; min-width: 210px; }
+  #hud-left .t { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; opacity: .7; }
+  #hud-left .c { font-size: 26px; font-weight: 800; color: var(--gold); margin: 2px 0 6px; }
+  #booklist { list-style: none; margin: 0; padding: 0; font-size: 13px; line-height: 1.6; opacity: .9; }
+  #booklist li.got { color: #9be29b; }
+  #place { top: 14px; left: 50%; transform: translateX(-50%); padding: 8px 18px; font-weight: 700; font-size: 15px; }
+  #restart { border: 0; background: #fff; color: var(--navy); font-weight: 800; font-size: 14px; padding: 11px 16px; border-radius: 12px; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.18); }
+  #restart:hover { background: var(--gold); color: #fff; }
+  #help { bottom: 14px; left: 14px; padding: 9px 14px; font-size: 13px; opacity: .92; }
+  #help b { color: var(--gold); }
+  #prompt { bottom: 90px; left: 50%; transform: translateX(-50%); padding: 10px 18px; font-size: 16px; font-weight: 700; opacity: 0; transition: opacity .15s; pointer-events: none; }
+  #prompt.show { opacity: 1; }
+  #toast { top: 64px; left: 50%; transform: translate(-50%, -10px); padding: 10px 18px; font-weight: 700; background: #f0a01e; opacity: 0; transition: all .25s; pointer-events: none; }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+  #cross { position: fixed; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px; border-radius: 50%; background: rgba(255,255,255,.8); box-shadow: 0 0 0 1px rgba(0,0,0,.3); pointer-events: none; }
+  .overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(12,24,52,.55); z-index: 10; }
+  .overlay.show { display: flex; }
+  .card { background: #fff; color: var(--navy); border-radius: 22px; padding: 30px 34px; max-width: 520px; width: calc(100% - 40px); box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+  .card h1 { margin: 0 0 4px; font-size: 30px; }
+  .card h1 span { color: var(--blue); }
+  .card p { margin: 6px 0 14px; color: #3b4a6b; line-height: 1.5; }
+  .card ul { margin: 0 0 18px; padding-left: 18px; color: #3b4a6b; line-height: 1.7; font-size: 14px; }
+  .card .btn { display: inline-block; border: 0; background: var(--blue); color: #fff; font-weight: 800; font-size: 17px; padding: 13px 26px; border-radius: 14px; cursor: pointer; }
+  .card .btn:hover { background: var(--gold); }
+  .bar { height: 5px; width: 60px; background: var(--gold); border-radius: 3px; margin-bottom: 14px; }
+  #err .card { text-align: center; }
+  /* ---- онлайн, деңгей, панельдер ---- */
+  #hud-left .lv { display:flex; align-items:center; gap:8px; margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,.15); font-size:13px; }
+  #hud-left .lv b { background: var(--gold); color: var(--navy); border-radius: 8px; padding: 2px 8px; font-size: 13px; }
+  .bar2 { height: 6px; background: rgba(255,255,255,.18); border-radius: 4px; overflow: hidden; margin-top: 5px; }
+  .bar2 > div { height: 100%; background: var(--gold); width: 0; transition: width .4s; }
+  #me-row { font-size: 12px; opacity: .85; margin-top: 6px; display:flex; justify-content:space-between; gap:8px; }
+  #me-edit { background: none; border: 0; color: var(--gold); cursor: pointer; font-size: 12px; padding: 0; }
+  #goal { top: 74px; right: 14px; padding: 10px 14px; width: 230px; font-size: 13px; }
+  #goal b { color: var(--gold); float: right; }
+  #online-btn { position: fixed; bottom: 14px; right: 14px; border: 0; background: var(--blue); color: #fff; font-weight: 800; font-size: 14px; padding: 11px 16px; border-radius: 12px; cursor: pointer; }
+  #mode { position: fixed; bottom: 62px; right: 16px; font-size: 11px; color: var(--navy); opacity: .7; }
+  #ch-unread { color: var(--gold); margin-left: 4px; }
+
+  /* ---- баптаулар, нұсқаулық, сағат ---- */
+  #hud-left > .t, #count, #booklist { display: none; }
+  #topbtns { position: fixed; top: 14px; right: 14px; display: flex; gap: 8px; z-index: 5; }
+  #hud-left, #goal, #prompt, #place, #toast { z-index: 5; }
+  #topbtns button:not(#restart) { border: 0; background: #fff; color: var(--navy); font-size: 17px; width: 40px; height: 40px; border-radius: 12px; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,.15); }
+  #goal { top: 66px; }
+  #clock { position: fixed; top: 58px; left: 50%; transform: translateX(-50%); font-size: 12px; color: #fff; background: rgba(19,37,79,.6); padding: 4px 10px; border-radius: 10px; }
+  #settings .opt { border: 2px solid #d5dbe8; background: #fff; border-radius: 10px; padding: 8px 12px; margin: 0 6px 8px 0; cursor: pointer; font-weight: 700; color: var(--navy); }
+  #settings .opt.on { background: var(--blue); border-color: var(--blue); color: #fff; }
+  #settings h4, #guide h4 { margin: 16px 0 8px; } .hint { font-size: 12px; color: #6b7690; margin: 0; }
+  #set-body, #guide-body { padding: 4px 18px 18px; overflow: auto; }
+  #guide-body p, #guide-body li { font-size: 14px; line-height: 1.55; color: #3b4a6b; }
+  #guide-body kbd { background: #eef1f7; border-radius: 6px; padding: 1px 6px; font-weight: 700; color: var(--navy); }
+  #start-online { font-size: 14px; color: #3b4a6b; background: #f2f5fb; border-radius: 12px; padding: 10px 12px; margin: 0 0 16px; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #2ecc71; margin-right: 4px; box-shadow: 0 0 0 3px rgba(46,204,113,.25); } .dot.off { background: #b3bccc; box-shadow: none; }
+  /* ---- телефон ---- */
+  #touch-ui { display: none; position: fixed; inset: 0; z-index: 3; pointer-events: none; }
+  #joy-zone { position: absolute; left: 0; bottom: 0; width: 42%; height: 70%; pointer-events: auto; touch-action: none; }
+  #look-zone { position: absolute; right: 0; top: 0; width: 58%; height: 100%; pointer-events: auto; touch-action: none; }
+  #joy-base { position: fixed; width: 120px; height: 120px; border-radius: 50%; background: rgba(255,255,255,.18); border: 2px solid rgba(255,255,255,.5); left: 40px; bottom: 40px; top: auto; display: flex; align-items: center; justify-content: center; }
+  #joy-base:not(.on) { left: 40px !important; top: auto !important; bottom: 40px; }
+  #joy-knob { width: 54px; height: 54px; border-radius: 50%; background: rgba(255,255,255,.85); box-shadow: 0 2px 10px rgba(0,0,0,.25); }
+  .tb { position: absolute; pointer-events: auto; border: 0; border-radius: 50%; background: rgba(19,37,79,.75); color: #fff; font-size: 20px; width: 54px; height: 54px; touch-action: none; }
+  #tb-act { right: 26px; bottom: 34px; width: 74px; height: 74px; font-size: 22px; font-weight: 900; background: rgba(23,70,181,.85); }
+  #tb-act.ready { background: var(--gold); color: var(--navy); box-shadow: 0 0 0 6px rgba(240,160,30,.35); }
+  #tb-run { right: 112px; bottom: 30px; } #tb-cam { right: 26px; bottom: 120px; } #tb-people { right: 92px; bottom: 100px; } #tb-full { right: 14px; top: 62px; width: 40px; height: 40px; font-size: 16px; border-radius: 12px; }
+  .tb.on { background: var(--gold); color: var(--navy); }
+  #rotate { position: fixed; inset: 0; z-index: 50; background: var(--navy); color: #fff; display: none; align-items: center; justify-content: center; text-align: center; padding: 30px; font-size: 18px; }
+  #rotate.show { display: flex; } #rotate b { font-size: 46px; display: block; margin-bottom: 12px; }
+  body.touch #help, body.touch #cross, body.touch #online-btn, body.touch #mode { display: none; }
+  body.touch #topbtns { right: 62px; top: 14px; } body.touch #restart { display: none; }
+  @media (max-height: 520px) {
+    #hud-left { padding: 8px 10px; min-width: 150px; font-size: 12px; } #hud-left .c { font-size: 18px; margin: 0 0 2px; }
+    #booklist { display: none; } #hud-left .lv { margin-top: 4px; padding-top: 4px; }
+    #goal { top: 62px; width: 180px; padding: 6px 10px; font-size: 11px; } #place { font-size: 12px; padding: 5px 12px; }
+    #clock { top: 46px; font-size: 10px; } #prompt { bottom: 128px; font-size: 13px; padding: 7px 12px; }
+    .card { padding: 18px 20px; max-height: 92vh; overflow: auto; } .card h1 { font-size: 22px; } .card p { font-size: 13px; margin: 4px 0 8px; }
+    .side { width: min(420px, 70vw); }
+  }
+  #profile { z-index: 12; }
+  .chip { border: 2px solid var(--c); background: #fff; color: var(--c); border-radius: 12px; padding: 9px 14px; font-weight: 800; cursor: pointer; margin: 0 6px 8px 0; font-size: 15px; }
+  .chip.on { background: var(--c); color: #fff; }
+  .card input { width: 100%; font-size: 17px; padding: 11px 13px; border: 2px solid #d5dbe8; border-radius: 12px; margin: 4px 0 14px; outline: none; }
+  .card input:focus { border-color: var(--blue); }
+  .card label { font-weight: 700; font-size: 14px; }
+  #pf-err { color: #c0392b; font-size: 13px; min-height: 18px; }
+  .side { position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 100vw); background: #fff; color: var(--navy); z-index: 9; display: none; flex-direction: column; box-shadow: -10px 0 40px rgba(0,0,0,.25); }
+  .side.show { display: flex; }
+  .side header { padding: 16px 18px; background: var(--navy); color: #fff; display: flex; align-items: center; justify-content: space-between; }
+  .side header h2 { margin: 0; font-size: 19px; }
+  .side header button { background: rgba(255,255,255,.15); color: #fff; border: 0; border-radius: 10px; padding: 8px 12px; cursor: pointer; font-weight: 700; }
+  #reader { z-index: 12; } .card { max-height: 94vh; overflow: auto; }
+  #pf-photo-row { display: flex; align-items: center; gap: 12px; margin: 6px 0 12px; }
+  #pf-photo-img { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; background: #e8ecf4; border: 2px solid #d5dbe8; }
+  #pf-photo-btn { border: 2px dashed #9fb0d0; background: #f6f8fc; color: var(--navy); border-radius: 12px; padding: 9px 14px; font-weight: 800; cursor: pointer; }
+  #readbar { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 8; display: none; align-items: center; gap: 12px; background: rgba(19,37,79,.92); color: #fff; border-radius: 16px; padding: 10px 12px 10px 16px; font-weight: 700; max-width: 92vw; box-shadow: 0 8px 24px rgba(0,0,0,.25); }
+  #readbar.show { display: flex; } #readbar span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #readbar button { border: 0; background: #f0a01e; color: #13254f; border-radius: 12px; padding: 9px 14px; font-weight: 800; cursor: pointer; flex: none; }
+  #ch-list { flex: 1; overflow: auto; padding: 14px; background: #f5f2ea; }
+  .msg { background: #fff; border-radius: 14px; padding: 9px 12px; margin-bottom: 9px; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+  .msg.mine { background: #e6eeff; }
+  .msg .mh { font-size: 13px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .msg .mh i { color: #8a93a8; font-style: normal; font-size: 12px; } .msg .mh small { color: #a3abbd; }
+  .msg .mb { margin-left: auto; opacity: .35; } .msg:hover .mb { opacity: 1; }
+  .msg .mb button { border: 0; background: none; cursor: pointer; font-size: 14px; padding: 0 2px; }
+  .msg .mt { margin-top: 3px; font-size: 15px; line-height: 1.45; white-space: pre-wrap; word-wrap: break-word; }
+  .empty { color: #8a93a8; text-align: center; margin-top: 40px; }
+  #chat footer, #people footer { padding: 12px; border-top: 1px solid #e6e9f0; display: flex; gap: 8px; flex-wrap: wrap; }
+  #ch-input { flex: 1; min-width: 0; font-size: 15px; padding: 11px 12px; border: 2px solid #d5dbe8; border-radius: 12px; outline: none; }
+  #chat footer button { border: 0; border-radius: 12px; padding: 10px 14px; font-weight: 800; cursor: pointer; background: var(--blue); color: #fff; }
+  #ch-ptt { background: #e9edf5 !important; color: #6b7690 !important; }
+  #ch-support { background: var(--gold) !important; width: 100%; }
+  #pp-list { flex: 1; overflow: auto; padding: 12px; }
+  .pr { padding: 11px 12px; border-radius: 12px; background: #f5f7fb; margin-bottom: 8px; font-size: 14px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .pr i { color: #6b7690; font-style: normal; font-size: 12px; } .pr small { color: #2e8b57; }
+  .pr button { margin-left: auto; border: 0; background: var(--blue); color: #fff; border-radius: 10px; padding: 6px 10px; cursor: pointer; font-weight: 700; font-size: 12px; }
+  .pr .you, .pr .ok, .pr .wait { margin-left: auto; font-size: 12px; font-weight: 700; color: #2e8b57; } .pr .wait { color: #8a93a8; }
+  #pp-friends, #pp-admin { font-size: 13px; color: #3b4a6b; width: 100%; }
+  #pp-admin button { border: 0; background: var(--gold); border-radius: 8px; padding: 4px 8px; cursor: pointer; font-weight: 700; }
+
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="cross"></div>
+
+<div id="hud-left" class="panel">
+  <div class="t">Табылған кітаптар</div>
+  <div class="c" id="count">0 / 5</div>
+  <ul id="booklist"></ul>
+  <div class="lv"><b>Деңгей <span id="lvl">1</span></b><span id="xptext" style="opacity:.8">0 мин оқыдың</span></div>
+  <div class="bar2"><div id="xpbar"></div></div>
+  <div id="me-row"><span id="me-name"></span><button id="me-edit">Кейіпкер ✎</button></div>
+</div>
+<div id="goal" class="panel"><span id="goal-title">Ортақ мақсат</span> <b id="goal-num">0 / 20</b><div class="bar2"><div id="goal-bar"></div></div></div>
+<div id="mode"></div>
+<button id="online-btn">👤 Жалғыз режим</button>
+<div id="place" class="panel">Аула</div>
+<div id="topbtns"><button id="btn-settings" title="Баптаулар">⚙</button><button id="btn-help" title="Нұсқаулық">?</button><button id="restart">↻ Басына оралу</button></div>
+<div id="clock"></div>
+<div id="help" class="panel"><b>WASD</b> — жүру · <b>Тінтуір</b> — қарау · <b>E</b> — әрекет · <b>Shift</b> — жүгіру · <b>V</b> — камера · <b>Tab</b> — ойыншылар · <b>Esc</b> — тінтуірді босату</div>
+<div id="prompt" class="panel"></div>
+<div id="toast" class="panel"></div>
+
+
+<div id="profile" class="overlay">
+  <div class="card">
+    <div class="bar"></div>
+    <h1>Тіркелу</h1>
+    <p>Аты-жөнің мен фотоң басқа ойыншыларға көрінеді. Телефон нөмірің тек сенің жеке профиліңде сақталады, басқаларға көрсетілмейді.</p>
+    <label>Профиль фотосы</label>
+    <div id="pf-photo-row"><img id="pf-photo-img" alt=""><button type="button" id="pf-photo-btn">📷 Фото таңдау</button><input type="file" id="pf-photo" accept="image/*" hidden></div>
+    <label for="pf-name">Аты-жөнің</label>
+    <input id="pf-name" maxlength="40" placeholder="Мысалы: Алпан Әлібек" autocomplete="name">
+    <label for="pf-phone">Телефон нөмірің</label>
+    <input id="pf-phone" type="tel" maxlength="18" placeholder="+7 7XX XXX XX XX" autocomplete="tel">
+    <label>Кейіпкер</label>
+    <div id="pf-gender" style="margin:6px 0 10px"></div>
+    <label>Рөлің</label>
+    <div id="pf-roles" style="margin:6px 0 4px"></div>
+    <div id="pf-grad" style="display:none"><label for="pf-year">Мектепті бітірген жылың</label><input id="pf-year" type="number" min="2000" max="2030" placeholder="Мысалы: 2023"></div>
+    <p style="font-size:13px;margin:4px 0 8px">Мұғалім рөлін әкімші растайды. Кәсіпкер мен түлек мектептің ортақ мақсатын қолдай алады.</p>
+    <div id="pf-err"></div>
+    <button class="btn" id="pf-save">Мектепке кіру</button>
+  </div>
+</div>
+<div id="reader" class="overlay">
+  <div class="card">
+    <div class="bar"></div>
+    <h1>📖 Қандай кітап оқып отырсың?</h1>
+    <p>Кітап атауы басыңның үстінде көрінеді, оқу уақытың есептеледі.</p>
+    <label for="rd-book">Кітап атауы</label>
+    <input id="rd-book" maxlength="60" placeholder="Мысалы: Абай жолы" autocomplete="off">
+    <label for="rd-author">Авторы</label>
+    <input id="rd-author" maxlength="40" placeholder="Мысалы: Мұхтар Әуезов" autocomplete="off">
+    <div id="rd-err" style="color:#c0392b;font-size:13px;min-height:18px"></div>
+    <button class="btn" id="rd-sit">Отырып оқу</button>
+    <button class="btn" id="rd-cancel" style="background:#e8ecf4;color:#13254f;margin-top:8px">Болдырмау</button>
+  </div>
+</div>
+<div id="readbar"><span id="rb-text"></span><button id="rd-close">Тұру</button></div>
+<div id="chat" class="side">
+  <header><h2>💬 Шайхана</h2><button id="ch-close">Тұру ✕</button></header>
+  <div id="ch-list"></div>
+  <footer>
+    <input id="ch-input" maxlength="300" placeholder="Хабарлама жаз..." autocomplete="off">
+    <button id="ch-send">Жіберу</button>
+    <button id="ch-ptt" title="Келесі кезеңде">🎙 Басып тұрып сөйле</button>
+    <button id="ch-support">🤝 Мектепті қолдау: +1 кітап (сынақ ұпайы)</button>
+  </footer>
+</div>
+<div id="people" class="side">
+  <header><h2>👥 Мектептегі адамдар<span id="ch-unread"></span></h2><button id="pp-close">Жабу ✕</button></header>
+  <div id="pp-list"></div>
+  <footer><div id="pp-friends"></div><div id="pp-admin"></div></footer>
+</div>
+
+<div id="settings" class="side">
+  <header><h2>⚙ Баптаулар</h2><button data-close="settings">Жабу ✕</button></header>
+  <div id="set-body"></div>
+</div>
+<div id="guide" class="side">
+  <header><h2>❔ Нұсқаулық</h2><button data-close="guide">Жабу ✕</button></header>
+  <div id="guide-body">
+    <h4>Басқару — компьютер</h4>
+    <ul><li><kbd>W A S D</kbd> — жүру, <kbd>Shift</kbd> — жүгіру</li><li>Тінтуір — жан-жаққа қарау (экранды бас)</li><li><kbd>E</kbd> — кітап алу, есік ашу, отыру</li><li><kbd>V</kbd> — камера (артынан / өз көзіңмен)</li><li><kbd>Tab</kbd> — мектептегі адамдар мен достар</li><li><kbd>Esc</kbd> — тінтуірді босату, терезені жабу</li></ul>
+    <h4>Басқару — телефон</h4>
+    <ul><li>Телефонды <b>көлденең</b> ұста (16:9). ⛶ — толық экран</li><li>Сол жақ — джойстик, оң жақ — саусақпен қарау</li><li><b>E</b> — әрекет (жанында бір нәрсе болса сары жанады), 🏃 — жүгіру, 🎥 — камера, 👥 — адамдар</li></ul>
+    <h4>Достарыңмен онлайн ойнау</h4>
+    <ol><li>Бетті claude.ai-да аш (жоғарғы оң жақта «Поделиться» батырмасы).</li><li>Досыңды қос және деңгейін <b>Contributor (Участник)</b> қой — сонда ол чатқа жаза алады, профилі сақталады.</li><li>Ол сілтемені ашып, атын жазып, кейіпкерін таңдайды. Сол сәтте бір-біріңді көресіңдер.</li></ol>
+    <p>Бетті компьютерден файл ретінде ашсаң — «Жалғыз режим»: бәрі жұмыс істейді, бірақ басқа адамдар көрінбейді.</p>
+    <h4>Не істеуге болады</h4>
+    <ul><li><b>Құндыз апай</b> (кіреберістегі ресепшн) — <kbd>E</kbd> басып, мектеп туралы кез келген сұрақ қой</li><li><b>Деңгей</b> — кітап оқыған минутыңмен өседі: әр 30 минут — жаңа деңгей</li><li><b>ТОП-10 оқырман</b> — кітапхана жанындағы тақта (<kbd>E</kbd> — толық тізім)</li><li><b>Қызыл орындықтар</b> — жол бойында, <kbd>E</kbd> басып отырып демал</li><li><b>Ауа райы</b> — жыл мезгіліне қарай: қыста қар, күзде жапырақ түседі, көктемде жаңбыр (⚙ ішінде ауыстыруға болады)</li><li><b>Виртуалды кітапхана</b> (сол жақтағы ағаш алаң, 50 орын) — <kbd>E</kbd> бассаң бос орынға отырасың, басыңның үстінде шырақ жанады, қолыңдағы кітаптың аты бәріне көрінеді. Отырар алдында қандай кітап оқып отырғаныңды жазасың — бас үстінде кітап аты мен оқу уақыты көрінеді</li><li><b>Шайхана</b> (оң жақтағы киіз үй) — ішіне кіріп, дастарқан басына отырып чатта сөйлес. 🔇 өшіру, ⛔ бұғаттау, ⚑ шағым</li><li><b>Ортақ мақсат</b> — түлек пен кәсіпкер шайханада «+1 кітап» басады. 20-ға жеткенде кітапханада жаңа сөре ашылады</li></ul>
+    <h4>Баптаулар</h4>
+    <p>⚙ ішінде графика сапасы (телефонда «Төмен»/«Орта»), тәулік уақыты (әдепкіде — нақты уақыт: кешке аулада шамдар жанады) және камера сезімталдығы бар.</p>
+    <h4>3D модельдер авторлары (CC BY 4.0)</h4>
+    <p style="font-size:12px;line-height:1.5">«90s Retro Office Pack» — MadeByYeshe; «Japanese Classroom» — T I A N; «Low Poly Tree Scene Free» — Nicholas-3D; «City Props Collection Vol. 1» — TampaJoey (Sketchfab Standard). Барлығы sketchfab.com сайтынан, ойынға ықшамдалып алынды.</p>
+  </div>
+</div>
+<div id="touch-ui">
+  <div id="joy-zone"><div id="joy-base"><div id="joy-knob"></div></div></div>
+  <div id="look-zone"></div>
+  <button class="tb" id="tb-act">E</button><button class="tb" id="tb-run">🏃</button><button class="tb" id="tb-cam">🎥</button><button class="tb" id="tb-people">👥</button><button class="tb" id="tb-full">⛶</button>
+</div>
+<div id="rotate"><div><b>📱↻</b>Телефонды көлденең ұста — ойын 16:9 экранға жасалған</div></div>
+<div id="start" class="overlay show">
+  <div class="card">
+    <div class="bar"></div>
+    <h1><span>Jas Abay</span> мектебі</h1>
+    <p>Виртуалды мектеп. Ауладан мектепке кіріп, екі қабатты арала, жасырылған <b>5 кітапты</b> тап, аулада кітап оқы, шайханада сөйлес.</p>
+    <div id="start-online"><span class="dot off"></span> Қосылып жатыр...</div>
+    <ul>
+      <li>Негізгі есік → кіреберіс залы → турникет → холл</li>
+      <li>Абай суреті бар баспалдақпен 2-қабатқа көтеріл</li>
+      <li>Жабық есіктерді <b>E</b> пернесімен аш</li>
+    </ul>
+    <button class="btn" id="play">Бастау</button>
+  </div>
+</div>
+<div id="win" class="overlay">
+  <div class="card">
+    <div class="bar"></div>
+    <h1>Жарайсың! 📚</h1>
+    <p>Бес кітаптың бәрін таптың. Келесі кезеңде бұл кітаптар ауладағы виртуалды кітапханаға қойылады.</p>
+    <button class="btn" id="again">Қайта ойнау</button>
+  </div>
+</div>
+<div id="err" class="overlay">
+  <div class="card"><h1>3D жүктелмеді</h1><p>three.js кітапханасы интернеттен жүктеледі. Интернетті тексеріп, бетті қайта аш.</p></div>
+</div>
+
+<script src="config.js"></script>
+<script src="fb.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="layout.js"></script>
+<script src="world.js"></script>
+<script src="game.js"></script>
+<script src="yard.js"></script>
+<script src="props.js"></script>
+<script src="env.js"></script>
+<script src="mobile.js"></script>
+<script src="online.js"></script>
+<script src="school.js"></script>
+</body>
+</html>

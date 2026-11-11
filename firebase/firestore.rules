@@ -1,0 +1,36 @@
+rules_version = '2';
+// Jas Abay — Cloud Firestore қауіпсіздік ережелері.
+// ADMIN_EMAIL орнына әкімшінің Google email-ін жаз.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signed() { return request.auth != null; }
+    function admin() { return signed() && request.auth.token.email == 'ADMIN_EMAIL'; }
+    function me(uid) { return signed() && request.auth.uid == uid; }
+
+    // ортақ профиль (аты, рөлі, деңгейі, оқу минуты, фото) — бәрі оқиды, тек иесі жазады
+    match /people/{uid} { allow read: if signed(); allow write: if me(uid) || admin(); }
+    // телефон — тек әкімші мен иесі
+    match /phones/{uid} { allow read: if admin() || me(uid); allow write: if me(uid); }
+    // жеке профиль (оқу тарихы, бетбелгі) — тек иесі
+    match /data/users/{uid}/{rest=**} { allow read, write: if me(uid); }
+    // Құндыз апай мәліметтері, хабарландыру, мақсат, мұғалімдер — бәрі оқиды, әкімші жазады
+    match /config/{id} { allow read: if true; allow write: if admin(); }
+    // шайхана чаты
+    match /chat/{id} {
+      allow read: if signed();
+      allow create: if signed() && request.resource.data.u == request.auth.uid
+                    && request.resource.data.text is string && request.resource.data.text.size() <= 300;
+      allow delete: if admin() || (signed() && resource.data.u == request.auth.uid);
+    }
+    // достар
+    match /friends/{id} {
+      allow read: if signed();
+      allow create: if signed() && request.resource.data.from == request.auth.uid;
+      allow update, delete: if signed() && (resource.data.to == request.auth.uid || resource.data.from == request.auth.uid);
+    }
+    // ортақ мақсатқа қолдау
+    match /support/{uid} { allow read: if signed(); allow write: if me(uid); }
+    // шағымдар — жібереді иесі, оқиды әкімші
+    match /reports/{uid}/items/{id} { allow create: if me(uid); allow read, delete: if admin(); }
+  }
+}
