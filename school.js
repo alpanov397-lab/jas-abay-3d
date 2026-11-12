@@ -132,10 +132,10 @@ ${facts}`;
   ap.innerHTML = `<header><h2>🛠 Әкімші бөлімі</h2><button id="ad-close">Жабу ✕</button></header>
     <div id="ad-tabs" style="display:flex;gap:6px;padding:10px 12px;flex-wrap:wrap;border-bottom:1px solid #e6e9f0">
       <button data-t="stat" class="chip on" style="--c:#13254f">📊 Статистика</button><button data-t="k" class="chip" style="--c:#7a1f5c">👩‍🏫 Құндыз апай</button>
-      <button data-t="news" class="chip" style="--c:#c77d00">📢 Хабарландыру</button><button data-t="goal" class="chip" style="--c:#2e8b57">🎯 Мақсат</button></div>
+      <button data-t="news" class="chip" style="--c:#c77d00">📢 Хабарландыру</button><button data-t="goal" class="chip" style="--c:#2e8b57">🎯 Мақсат</button><button data-t="rep" class="chip" style="--c:#c0392b">🚩 Шағымдар <span id="ad-repn"></span></button></div>
     <div id="ad-body" style="flex:1;overflow:auto;padding:14px 16px"></div>`;
   document.body.appendChild(ap); stopKeys(ap);
-  let tab = 'stat', phones = new Map();
+  let tab = 'stat', phones = new Map(), reports = [];
   $('ad-tabs').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; tab = b.dataset.t; $('ad-tabs').querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c === b)); renderAdmin(); };
   $('ad-close').onclick = () => { ap.classList.remove('show'); resume(); };
   const ta = 'width:100%;font-size:15px;padding:10px;border:2px solid #d5dbe8;border-radius:12px;margin:4px 0 12px;font-family:inherit';
@@ -170,6 +170,22 @@ ${facts}`;
         <button class="btn" id="ad-nsave">Жариялау</button> <button class="btn" id="ad-nclear" style="background:#e8ecf4;color:#13254f;margin-top:8px">Хабарландыруды алып тастау</button>`;
       $('ad-nsave').onclick = () => save('config/news', { text: $('ad-nt').value.trim().slice(0, 200), ts: Date.now() });
       $('ad-nclear').onclick = () => save('config/news', { text: '', ts: Date.now() });
+    } else if (tab === 'rep') {
+      if (!window.JAS_FB) { body.innerHTML = '<p>Шағымдар тізімі сайт нұсқасында (jas-abay.web.app) көрінеді.</p>'; return; }
+      const nm = (id) => { const p = N.people().get(id); return p && p.nm ? N.clean(p.nm, 40) : 'белгісіз'; };
+      body.innerHTML = reports.length ? reports.map((r, i) => `<div style="border:1px solid #eef0f5;border-radius:12px;padding:10px 12px;margin-bottom:8px">
+          <div style="font-size:12px;color:#6b7690">${r.ts ? new Date(r.ts).toLocaleString('kk-KZ') : ''} · шағым берген: <b>${esc(nm(r.by))}</b></div>
+          <div style="margin:6px 0"><b>${esc(N.clean(r.nm || nm(r.u), 40))}:</b> ${esc(N.clean(r.text, 300))}</div>
+          <button data-i="${i}" data-a="delmsg" style="border:0;background:#c0392b;color:#fff;border-radius:9px;padding:6px 10px;cursor:pointer;font-weight:700">Хабарламаны жою</button>
+          <button data-i="${i}" data-a="ok" style="border:1px solid #c9d3e6;background:#fff;border-radius:9px;padding:6px 10px;cursor:pointer;font-weight:700">Шағымды жабу</button></div>`).join('')
+        : '<p>Шағым жоқ 👍</p>';
+      body.onclick = async (e) => {
+        const b = e.target.closest('button[data-a]'); if (!b) return; const r = reports[+b.dataset.i]; if (!r) return;
+        try {
+          if (b.dataset.a === 'delmsg' && r.msg) await N.db.doc('chat/' + r.msg).delete().catch(() => {});
+          await r.ref.delete(); toast(b.dataset.a === 'delmsg' ? 'Хабарлама жойылды ✓' : 'Шағым жабылды ✓');
+        } catch (er) { toast('Орындалмады'); }
+      };
     } else if (tab === 'goal') {
       body.innerHTML = `<label style="font-weight:700">Ортақ мақсаттың атауы</label><input id="ad-gt" maxlength="60" style="${ta}" value="${esc((S.goal && S.goal.title) || '')}">
         <label style="font-weight:700">Мақсат саны</label><input id="ad-gn" type="number" min="1" max="10000" style="${ta}" value="${(S.goal && S.goal.target) || 20}">
@@ -198,6 +214,11 @@ ${facts}`;
       $('topbtns').insertBefore(b, $('topbtns').firstChild);
       b.onclick = () => { pause(); ap.classList.add('show'); renderAdmin(); };
       setInterval(() => { if (ap.classList.contains('show') && tab === 'stat') renderAdmin(); }, 10000);
+      if (N.db && window.JAS_FB && N.db.collectionGroup) N.db.collectionGroup('items').limit(300).onSnapshot((s) => {
+        reports = s.docs.map(d => Object.assign({ ref: d.ref }, d.data())).sort((a, b) => (b.ts || 0) - (a.ts || 0));
+        $('ad-repn').textContent = reports.length ? '(' + reports.length + ')' : '';
+        if (ap.classList.contains('show') && tab === 'rep') renderAdmin();
+      }, () => {});
       if (N.db) N.db.collection('phones').onSnapshot((s) => { phones = new Map(s.docs.map(d => [d.id, (d.data() || {}).ph || ''])); if (ap.classList.contains('show') && tab === 'stat') renderAdmin(); }, () => {});
     }
   });

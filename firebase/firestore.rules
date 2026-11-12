@@ -8,7 +8,20 @@ service cloud.firestore {
     function me(uid) { return signed() && request.auth.uid == uid; }
 
     // ортақ профиль (аты, рөлі, деңгейі, оқу минуты, фото) — бәрі оқиды, тек иесі жазады
-    match /people/{uid} { allow read: if signed(); allow write: if me(uid) || admin(); }
+    // ортақ профиль. Оқу минуты (rm) тек өткен уақытқа сай өседі: rmAt — сервер уақыты
+    function rmOld() { return resource.data.get('rm', 0); }
+    function rmNew() { return request.resource.data.get('rm', 0); }
+    function atOld() { return resource.data.get('rmAt', timestamp.value(0)); }
+    function atNew() { return request.resource.data.get('rmAt', null); }
+    match /people/{uid} {
+      allow read: if signed();
+      allow create: if me(uid) && rmNew() <= 5;
+      allow update: if admin() || (me(uid) && (
+        (rmNew() <= rmOld() && (atNew() == resource.data.get('rmAt', null) || atNew() == request.time)) ||
+        (atNew() == request.time && rmNew() - rmOld() <= (request.time.toMillis() - atOld().toMillis()) / 60000 + 2)
+      ));
+      allow delete: if me(uid) || admin();
+    }
     // телефон — тек әкімші мен иесі
     match /phones/{uid} { allow read: if admin() || me(uid); allow write: if me(uid); }
     // жеке профиль (оқу тарихы, бетбелгі) — тек иесі
@@ -32,5 +45,7 @@ service cloud.firestore {
     match /support/{uid} { allow read: if signed(); allow write: if me(uid); }
     // шағымдар — жібереді иесі, оқиды әкімші
     match /reports/{uid}/items/{id} { allow create: if me(uid); allow read, delete: if admin(); }
+    // әкімші барлық шағымдарды бір тізіммен оқиды (collection group)
+    match /{path=**}/items/{id} { allow read, delete: if admin(); }
   }
 }

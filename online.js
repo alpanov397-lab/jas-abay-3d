@@ -37,7 +37,8 @@
   let room = null, db = null, user = null, myId = null, isAdmin = false, canWrite = true;
   let teachers = [], chatMsgs = [], supportDocs = [], friends = new Map(), people = new Map();
   let status = '', online = false;
-  let rdBook = null, readStart = 0;
+  let rdBook = null, readStart = 0, readMs = 0, readTick = 0, nextCheck = 0, afkAt = 0;
+  const CHECK_MS = 10 * 60000, AFK_MS = 90000, MAX_READ = 180 * 60000;   // 10 мин сайын тексеру, 90 с күту, бір отырыста ең көбі 3 сағ
 
   // ---------------- Көмекшілер ----------------
   const esc = (t) => String(t == null ? '' : t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -67,7 +68,15 @@
     if (myId) {
       write(`data/users/${myId}/profile`, JSON.parse(JSON.stringify(me)));
       const pub = { nm: me.name, rl: me.role, lv: level(totalMin()), ach: me.ach.length, gy: me.role === 'alumni' ? me.gradYear : '', ph: me.photo || '', rm: readMin(), rc: (me.readLog || []).length, jt: me.joined || (me.joined = Date.now()) };   // телефон мұнда ЖОҚ — ол тек жеке профильде
-      if (JSON.stringify(pub) !== saveMe.lastPub) { saveMe.lastPub = JSON.stringify(pub); write(`people/${myId}`, pub); }
+      if (JSON.stringify(pub) !== saveMe.lastPub) {
+        saveMe.lastPub = JSON.stringify(pub);
+        // Firebase: оқу минуты тек өткен уақытқа сай өсе алады (ереже rmAt сервер уақытымен тексереді)
+        if (window.JAS_FB && window.firebase && firebase.firestore && firebase.firestore.FieldValue) {
+          const mine = people.get(myId) || {}, FV = firebase.firestore.FieldValue;
+          pub.rmAt = (pub.rm > (Number(mine.rm) || 0) || !mine.rmAt) ? FV.serverTimestamp() : mine.rmAt;
+        }
+        write(`people/${myId}`, pub);
+      }
       // телефон: тек әкімші оқи алатын бөлек жерге (phones/<id>)
       const ph = { nm: me.name, ph: me.phone || '', ts: Date.now() };
       if (me.phone && me.phone + me.name !== saveMe.lastPh) { saveMe.lastPh = me.phone + me.name; write(`phones/${myId}`, ph); }
@@ -76,7 +85,7 @@
   }
   function readMin() { return (me.readLog || []).reduce((a, r) => a + (r.min || 0), 0); }
   // жалпы оқу минуты (қазір оқып отырған уақытты қоса)
-  function totalMin() { return readMin() + (readStart ? Math.floor((Date.now() - readStart) / 60000) : 0); }
+  function totalMin() { return readMin() + Math.floor(readMs / 60000); }
   function addXP(n) { me.xp = (me.xp || 0) + n; saveMe(); }   // деңгей енді тек оқу минутынан есептеледі
   let lastLv = 0;
   function checkLevel() { const lv = level(totalMin()); if (lastLv && lv > lastLv) toast(`Жаңа деңгей: ${lv}! 🎉 (${totalMin()} мин оқыдың)`); lastLv = lv; }
@@ -140,18 +149,20 @@
     gch.innerHTML = [['boy', '👦 Ұл'], ['girl', '👧 Қыз']].map(([k, n]) => `<button data-g="${k}" class="chip${k === gender ? ' on' : ''}" style="--c:#13254f">${n}</button>`).join('');
     gch.onclick = (e) => { const b = e.target.closest('button'); if (!b) return; gender = b.dataset.g; gch.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c === b)); G.av.setGender(gender); };
     const chips = $('pf-roles');
-    const showGrad = () => { $('pf-grad').style.display = role === 'alumni' ? 'block' : 'none'; };
+    const showGrad = () => { $('pf-grad').style.display = role === 'alumni' ? 'block' : 'none'; $('pf-phone-l').textContent = role === 'student' ? 'Телефон нөмірің (міндетті емес)' : 'Телефон нөмірің'; };
+    $('pf-consent').checked = !!me.consent; $('pf-delete').style.display = me.name ? 'block' : 'none';
     chips.innerHTML = Object.entries(ROLES).map(([k, r]) => `<button data-r="${k}" class="chip${k === role ? ' on' : ''}" style="--c:${r.color}">${r.name}</button>`).join('');
     chips.onclick = (e) => { const b = e.target.closest('button'); if (!b) return; role = b.dataset.r; chips.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c === b)); showGrad(); };
     showGrad();
     $('pf-save').onclick = () => {
       const nm = clean($('pf-name').value, 40).replace(/\s+/g, ' ');
       if (nm.split(' ').filter(w => w.length >= 2).length < 2) { $('pf-err').textContent = 'Аты-жөніңді толық жаз (аты және тегі)'; return; }
-      const ph = normPhone($('pf-phone').value);
-      if (!ph) { $('pf-err').textContent = 'Телефон нөмірін дұрыс жаз: +7 7XX XXX XX XX'; return; }
+      const rawPh = $('pf-phone').value.trim(), ph = normPhone(rawPh);
+      if (!ph && (role !== 'student' || rawPh)) { $('pf-err').textContent = 'Телефон нөмірін дұрыс жаз: +7 7XX XXX XX XX'; return; }
+      if (!$('pf-consent').checked) { $('pf-err').textContent = 'Тіркелу үшін деректерді өңдеуге келісім бер'; return; }
       const yr = parseInt($('pf-year').value, 10), now = new Date().getFullYear();
       if (role === 'alumni' && !(yr >= 1990 && yr <= now)) { $('pf-err').textContent = 'Мектепті бітірген жылыңды жаз'; return; }
-      me.name = nm; me.phone = ph; me.gradYear = role === 'alumni' ? String(yr) : ''; me.photo = okPhoto(photo) ? photo : '';
+      me.name = nm; me.phone = ph || ''; me.consent = me.consent || Date.now(); me.gradYear = role === 'alumni' ? String(yr) : ''; me.photo = okPhoto(photo) ? photo : '';
       me.role = role; me.gender = gender; G.av.setJacket(ROLES[role].color); G.av.setGender(gender);
       ov.classList.remove('show'); G.paused = false; saveMe(); sendPresence(true); myTag.key = '';
       if (done) done();
@@ -159,7 +170,16 @@
   }
   for (const id of ['pf-phone', 'pf-year', 'rd-book', 'rd-author']) $(id).addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') (id.startsWith('rd') ? $('rd-sit') : $('pf-save')).click(); });
   // Бұрын тек атпен тіркелгендер жаңа өрістерді (телефон) бір рет толтырады
-  const needsProfile = () => !me.name || !me.phone;
+  const needsProfile = () => !me.name || !me.consent || (!me.phone && me.role !== 'student');
+  $('pf-privacy').onclick = (e) => { e.preventDefault(); $('privacy').classList.add('show'); };
+  $('pv-close').onclick = () => $('privacy').classList.remove('show');
+  // Дербес деректерді толық жою (профиль, телефон, ортақ тізімдегі жазба)
+  $('pf-delete').onclick = async () => {
+    if (!confirm('Барлық деректерің (профиль, телефон, оқу тарихы) біржола өшіріледі. Жалғастырасың ба?')) return;
+    try { if (db && myId) await Promise.all([`people/${myId}`, `phones/${myId}`, `data/users/${myId}/profile`].map(p => db.doc(p).delete().catch(() => {}))); } catch (e) {}
+    try { Object.keys(localStorage).filter(k => k.startsWith('jasabay.')).forEach(k => localStorage.removeItem(k)); } catch (e) {}
+    location.reload();
+  };
   G.beforeStart = (go) => { if (!needsProfile()) go(); else showProfile(go); };
   $('me-edit').onclick = () => showProfile(() => G.lockMouse());
   G.av.setJacket((ROLES[me.role] || ROLES.student).color); G.av.setGender(me.gender || 'boy');
@@ -207,24 +227,37 @@
     rdBook = { title, author, color: BOOK_COLORS[h % BOOK_COLORS.length] };
     me.lastBook = { title, author };
     $('reader').classList.remove('show');
-    sit(mySeat); readStart = Date.now();
+    sit(mySeat); readStart = readTick = Date.now(); readMs = 0; nextCheck = readStart + CHECK_MS; afkAt = 0;
     G.setHeld(G.av, 'book', title, rdBook.color);
     setStatus('reading'); updateBar(); $('readbar').classList.add('show');
     saveMe();
   };
   $('rd-cancel').onclick = () => { $('reader').classList.remove('show'); mySeat = null; G.paused = false; G.lockMouse(); };
-  function updateBar() { if (rdBook) $('rb-text').textContent = `📖 «${rdBook.title}» · ${fmtMin(Date.now() - readStart)}`; }
+  function updateBar() { if (rdBook) $('rb-text').textContent = `📖 «${rdBook.title}» · ${fmtMin(readMs)}`; }
+  // Тек белсенді уақыт есептеледі: бет ашық тұрғанда және «Әлі оқып отырсың ба?» сұрағына жауап бергенде
+  setInterval(() => {
+    if (status !== 'reading' || !readStart) return;
+    const now = Date.now(), dt = Math.min(5000, now - readTick); readTick = now;
+    if (!document.hidden && !afkAt) readMs += dt;
+    if (readMs >= MAX_READ) { toast('3 сағат оқыдың — демалып ал 🙂'); $('rd-close').click(); return; }
+    if (!afkAt && now >= nextCheck) { afkAt = now; $('afk').classList.add('show'); document.exitPointerLock && document.exitPointerLock(); }
+    if (afkAt) {
+      const left = Math.max(0, Math.ceil((AFK_MS - (now - afkAt)) / 1000)); $('afk-left').textContent = left;
+      if (!left) { $('afk').classList.remove('show'); afkAt = 0; toast('Жауап болмады — оқу тоқтатылды'); $('rd-close').click(); }
+    }
+  }, 1000);
+  $('afk-yes').onclick = () => { $('afk').classList.remove('show'); afkAt = 0; readTick = Date.now(); nextCheck = Date.now() + CHECK_MS; };
   setInterval(() => { if (status === 'reading') { updateBar(); sendPresence(true); renderHud(); } }, 15000);
   $('rd-close').onclick = () => {
     if (rdBook && readStart) {
-      const mins = Math.round((Date.now() - readStart) / 60000);
+      const mins = Math.floor(readMs / 60000);
       me.readLog = (me.readLog || []).concat([{ title: rdBook.title, author: rdBook.author, at: readStart, min: mins }]).slice(-100);
       const total = me.readLog.reduce((a, r) => a + (r.min || 0), 0);
-      if (mins >= 1) addXP(Math.min(20, mins)); else saveMe();
+      saveMe();
       if (total >= 30) achieve('reader');
-      toast(`Оқу уақыты: ${fmtMin(Date.now() - readStart)} 📚`);
+      toast(`Оқу уақыты: ${fmtMin(readMs)} 📚`);
     }
-    rdBook = null; readStart = 0; $('readbar').classList.remove('show'); stand(); G.lockMouse(); drawStats();
+    rdBook = null; readStart = 0; readMs = 0; afkAt = 0; $('afk').classList.remove('show'); $('readbar').classList.remove('show'); stand(); G.lockMouse(); drawStats();
   };
 
   // ---------------- Шайхана: чат ----------------
@@ -438,7 +471,7 @@
     const p = {
       u: myId || '', nm: me.name, rl: me.role, g: me.gender || 'boy', lv: level(totalMin()), st: status,
       sa: mySeat ? mySeat.area : null, si: mySeat ? mySeat.id : null,
-      bk: status === 'reading' && rdBook ? rdBook.title : null, bc: status === 'reading' && rdBook ? rdBook.color : null, rs: status === 'reading' ? readStart : null, gy: me.role === 'alumni' ? me.gradYear : '',
+      bk: status === 'reading' && rdBook ? rdBook.title : null, bc: status === 'reading' && rdBook ? rdBook.color : null, rs: status === 'reading' ? Date.now() - readMs : null, gy: me.role === 'alumni' ? me.gradYear : '',
       x: +(s ? s.x : st.x).toFixed(2), y: +(s ? s.y : st.y).toFixed(2), z: +(s ? s.z : st.z).toFixed(2),
       f: +(s ? s.f : (G.facing || 0)).toFixed(2), mv: !!G.moving
     };
@@ -452,7 +485,7 @@
   G.frameHooks.push(() => {
     myTag.sp.visible = !!me.name;
     myTag.sp.position.y = status === 'reading' ? 2.6 : 2.2;
-    if (me.name) drawTag(myTag, { nm: me.name, rl: me.role, lv: level(totalMin()), st: status, u: myId, ph: me.photo, gy: me.gradYear, bk: rdBook && rdBook.title, rs: readStart });
+    if (me.name) drawTag(myTag, { nm: me.name, rl: me.role, lv: level(totalMin()), st: status, u: myId, ph: me.photo, gy: me.gradYear, bk: rdBook && rdBook.title, rs: readStart ? Date.now() - readMs : 0 });
   });
   function renderStartOnline() {
     const el = $('start-online'); if (!el) return;

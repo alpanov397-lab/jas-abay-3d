@@ -158,12 +158,12 @@
   <div class="card">
     <div class="bar"></div>
     <h1>Тіркелу</h1>
-    <p>Аты-жөнің мен фотоң басқа ойыншыларға көрінеді. Телефон нөмірің тек сенің жеке профиліңде сақталады, басқаларға көрсетілмейді.</p>
+    <p>Аты-жөнің мен фотоң басқа ойыншыларға көрінеді. Телефон нөмірін тек мектеп әкімшілігі көреді.</p>
     <label>Профиль фотосы</label>
     <div id="pf-photo-row"><img id="pf-photo-img" alt=""><button type="button" id="pf-photo-btn">📷 Фото таңдау</button><input type="file" id="pf-photo" accept="image/*" hidden></div>
     <label for="pf-name">Аты-жөнің</label>
     <input id="pf-name" maxlength="40" placeholder="Мысалы: Алпан Әлібек" autocomplete="name">
-    <label for="pf-phone">Телефон нөмірің</label>
+    <label for="pf-phone" id="pf-phone-l">Телефон нөмірің</label>
     <input id="pf-phone" type="tel" maxlength="18" placeholder="+7 7XX XXX XX XX" autocomplete="tel">
     <label>Кейіпкер</label>
     <div id="pf-gender" style="margin:6px 0 10px"></div>
@@ -171,8 +171,34 @@
     <div id="pf-roles" style="margin:6px 0 4px"></div>
     <div id="pf-grad" style="display:none"><label for="pf-year">Мектепті бітірген жылың</label><input id="pf-year" type="number" min="2000" max="2030" placeholder="Мысалы: 2023"></div>
     <p style="font-size:13px;margin:4px 0 8px">Мұғалім рөлін әкімші растайды. Кәсіпкер мен түлек мектептің ортақ мақсатын қолдай алады.</p>
+    <label id="pf-consent-row" style="display:flex;gap:10px;align-items:flex-start;font-weight:500;font-size:13.5px;line-height:1.45;margin:8px 0 6px;cursor:pointer">
+      <input type="checkbox" id="pf-consent" style="width:20px;height:20px;margin:1px 0 0;flex:none">
+      <span>Дербес деректерімді (аты-жөні, телефон, фото, оқу статистикасы) ойын жұмысы үшін өңдеуге келісемін. <a href="#" id="pf-privacy" style="color:#1f5fbf">Толығырақ</a><br><small style="color:#6b7690">18 жасқа толмасаң — ата-анаңның рұқсатымен тіркел.</small></span>
+    </label>
     <div id="pf-err"></div>
     <button class="btn" id="pf-save">Мектепке кіру</button>
+    <button type="button" id="pf-delete" style="display:none;margin-top:10px;background:none;border:0;color:#c0392b;font-weight:700;cursor:pointer;width:100%">🗑 Деректерімді толық жою</button>
+  </div>
+</div>
+<div id="privacy" class="overlay" style="z-index:14">
+  <div class="card">
+    <div class="bar"></div>
+    <h1>🔒 Құпиялылық</h1>
+    <p><b>Не жиналады:</b> аты-жөні, телефон нөмірі, рөлі (түлек болса — бітірген жылы), профиль фотосы, кітап оқу тарихы мен минуттары, чаттағы хабарламалар.</p>
+    <p><b>Не үшін:</b> ойындағы профиль, ТОП-10 оқырмандар тізімі, мектеп әкімшілігінің байланысы.</p>
+    <p><b>Кім көреді:</b> аты-жөнің, фотоң, рөлің мен оқу минуттарың — барлық ойыншыларға көрінеді. Телефон нөміріңді тек мектеп әкімшілігі көреді, ешкімге берілмейді.</p>
+    <p><b>Қай жерде сақталады:</b> Google Firebase сервері (Еуропа).</p>
+    <p><b>Жою:</b> «Кейіпкер ✎» → «Деректерімді толық жою» батырмасы барлық деректеріңді бірден өшіреді.</p>
+    <p><b>18 жасқа толмағандар</b> ата-анасының (заңды өкілінің) рұқсатымен тіркеледі. Оқушыларға телефон міндетті емес.</p>
+    <button class="btn" id="pv-close">Түсіндім</button>
+  </div>
+</div>
+<div id="afk" class="overlay" style="z-index:15">
+  <div class="card" style="text-align:center">
+    <div class="bar"></div>
+    <h1>📖 Әлі оқып отырсың ба?</h1>
+    <p>Оқу уақыты шынайы болуы үшін 10 минут сайын сұраймыз. <b id="afk-left">90</b> секундта жауап бермесең, оқу тоқтатылады.</p>
+    <button class="btn" id="afk-yes">Иә, оқып отырмын</button>
   </div>
 </div>
 <div id="reader" class="overlay">
